@@ -1,0 +1,129 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # 触发条件：推送版本标签，如 v1.0.0
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+        
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.0'
+        channel: 'stable'
+        
+    - name: Install Flutter dependencies
+      run: flutter pub get
+      
+    - name: Enable Windows desktop
+      run: flutter config --enable-windows-desktop
+      
+    - name: Build Windows executable
+      run: flutter build windows --release
+      
+    - name: Build Android APK
+      run: flutter build apk --release --split-per-abi
+      
+    - name: Get version from pubspec.yaml
+      id: version
+      run: |
+        $version = (Select-String -Path "pubspec.yaml" -Pattern "^version: (.+)$").Matches[0].Groups[1].Value
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+      shell: powershell
+      
+    - name: Create Release Archive
+      run: |
+        # 创建Windows可执行文件压缩包
+        Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath "spring_festival_couplet_generator-windows-x64.zip"
+        
+        # 重命名APK文件为更友好的名称
+        Copy-Item "build\app\outputs\flutter-apk\app-arm64-v8a-release.apk" "spring_festival_couplet_generator-arm64-v8a.apk" -ErrorAction SilentlyContinue
+        Copy-Item "build\app\outputs\flutter-apk\app-armeabi-v7a-release.apk" "spring_festival_couplet_generator-armeabi-v7a.apk" -ErrorAction SilentlyContinue
+        Copy-Item "build\app\outputs\flutter-apk\app-x86_64-release.apk" "spring_festival_couplet_generator-x86_64.apk" -ErrorAction SilentlyContinue
+      shell: powershell
+      
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        files: |
+          spring_festival_couplet_generator-windows-x64.zip
+          spring_festival_couplet_generator-arm64-v8a.apk
+          spring_festival_couplet_generator-armeabi-v7a.apk
+          spring_festival_couplet_generator-x86_64.apk
+        body: |
+          ## 📱 下载说明
+
+          ### Windows 版本
+          - **spring_festival_couplet_generator-windows-x64.zip**: Windows 64位可执行程序
+
+          ### Android 版本
+          - **spring_festival_couplet_generator-arm64-v8a.apk**: 适用于现代Android设备（推荐）
+          - **spring_festival_couplet_generator-armeabi-v7a.apk**: 适用于较老的Android设备
+          - **spring_festival_couplet_generator-x86_64.apk**: 适用于x86架构的Android设备
+
+          ### 安装说明
+          1. **Windows**: 下载zip文件，解压后运行exe文件
+          2. **Android**: 下载对应架构的APK文件，允许未知来源安装后直接安装
+
+          ---
+          *自动构建于 ${{ github.event.head_commit.timestamp }}*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 可选：添加多平台构建支持
+  build-linux:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'  # 仅手动触发时构建Linux版本
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.0'
+        channel: 'stable'
+        
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+        
+    - name: Install Flutter dependencies
+      run: flutter pub get
+      
+    - name: Enable Linux desktop
+      run: flutter config --enable-linux-desktop
+      
+    - name: Build Linux executable
+      run: flutter build linux --release
+      
+    - name: Create Linux Archive
+      run: |
+        tar -czf spring_festival_couplet_generator-linux-x64.tar.gz -C build/linux/x64/release/bundle .
+      
+    - name: Upload Linux Build
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-build
+        path: spring_festival_couplet_generator-linux-x64.tar.gz
