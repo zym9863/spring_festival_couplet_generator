@@ -173,7 +173,7 @@ class AppTheme {
         borderSide: const BorderSide(color: imperialGold, width: 1),
       ),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 4,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
